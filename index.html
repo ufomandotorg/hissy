@@ -1,0 +1,846 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Hissy's Backyard Hunt</title>
+  <style>
+    :root{
+      --bg:#0d1424;
+      --panel:#151d2f;
+      --card:#1d273d;
+      --text:#f4f7fb;
+      --muted:#b8c2d7;
+      --border:#33415f;
+      --accent:#7fbcff;
+      --accentText:#07111f;
+    }
+    *{box-sizing:border-box}
+    body{
+      margin:0;
+      font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;
+      background:linear-gradient(#0b1020,#11182a);
+      color:var(--text);
+      min-height:100vh;
+      padding:24px;
+    }
+    .wrap{
+      width:min(920px,100%);
+      margin:0 auto;
+    }
+    h1{
+      margin:0 0 16px;
+      font-size:clamp(28px,5vw,44px);
+      text-align:center;
+    }
+    .topbar{
+      display:flex;
+      flex-wrap:wrap;
+      gap:10px;
+      align-items:center;
+      justify-content:space-between;
+      margin-bottom:14px;
+    }
+    .stats,.actions{
+      display:flex;
+      flex-wrap:wrap;
+      gap:8px;
+    }
+    .stat{
+      background:var(--card);
+      border:1px solid var(--border);
+      border-radius:12px;
+      padding:10px 14px;
+      font-weight:600;
+    }
+    .stat.points{
+      font-size:20px;
+    }
+    button{
+      min-height:44px;
+      border-radius:10px;
+      border:1px solid var(--border);
+      background:var(--card);
+      color:var(--text);
+      padding:10px 14px;
+      font-size:16px;
+      font-weight:700;
+      cursor:pointer;
+    }
+    button.primary{
+      background:var(--accent);
+      color:var(--accentText);
+      border-color:transparent;
+    }
+    button:disabled{
+      opacity:.5;
+      cursor:not-allowed;
+    }
+    .game-shell{
+      border:1px solid var(--border);
+      border-radius:18px;
+      overflow:hidden;
+      background:var(--panel);
+    }
+    canvas{
+      display:block;
+      width:100%;
+      height:auto;
+      background:#111;
+    }
+    .below{
+      display:grid;
+      grid-template-columns:1fr auto;
+      gap:16px;
+      align-items:center;
+      margin-top:14px;
+    }
+    .help{
+      color:var(--muted);
+      line-height:1.5;
+    }
+    .pad{
+      display:grid;
+      grid-template-columns:repeat(3,52px);
+      gap:8px;
+      justify-content:center;
+    }
+    .pad button{
+      width:52px;
+      height:52px;
+      padding:0;
+      font-size:22px;
+      touch-action:none;
+    }
+    .status{
+      margin-top:12px;
+      min-height:24px;
+      font-weight:700;
+    }
+    .footer{
+      margin-top:16px;
+      text-align:center;
+      color:var(--muted);
+      font-size:13px;
+    }
+    @media(max-width:650px){
+      body{padding:12px}
+      .below{grid-template-columns:1fr}
+      .topbar{align-items:flex-start}
+      .actions{width:100%}
+      .actions button{flex:1 1 30%}
+    }
+  </style>
+</head>
+<body>
+<div class="wrap" id="hissy-night-game" tabindex="0" aria-label="Hissy's Backyard Hunt">
+  <h1>Hissy's Backyard Hunt</h1>
+
+  <div class="topbar">
+    <div class="stats">
+      <div class="stat points">🐾 Points: <span id="hng-score">0</span></div>
+      <div class="stat">Time: <span id="hng-time">60</span>s</div>
+      <div class="stat">Best: <span id="hng-best">0</span></div>
+    </div>
+    <div class="actions">
+      <button id="hng-start" class="primary" type="button">Start Game</button>
+      <button id="hng-pause" type="button" disabled>Pause</button>
+      <button id="hng-restart" type="button">Restart</button>
+      <button id="hng-sound" type="button" aria-pressed="true">🔊 Sound on</button>
+    </div>
+  </div>
+
+  <div class="game-shell">
+    <canvas id="hng-canvas" width="720" height="460" aria-label="Hissy the black cat chasing bugs and a lizard in a moonlit backyard at night"></canvas>
+  </div>
+
+  <div class="below">
+    <div class="help">
+      <strong>Move Hissy:</strong> WASD or arrow keys.<br>
+      Beetles 1 point, moths 2, crickets 3, grasshoppers 4, fireflies 5, lizards 10. A UFO may occasionally drift high across the sky beyond the fence.
+    </div>
+    <div class="pad" aria-label="Touch controls">
+      <span></span><button type="button" data-dir="up" aria-label="Move up">▲</button><span></span>
+      <button type="button" data-dir="left" aria-label="Move left">◀</button>
+      <button type="button" data-dir="down" aria-label="Move down">▼</button>
+      <button type="button" data-dir="right" aria-label="Move right">▶</button>
+    </div>
+  </div>
+
+  <div id="hng-status" class="status" aria-live="polite">Press Start Game and help Hissy hunt under the moonlight!</div>
+  <div class="footer">Standalone HTML5 game — no installation required.</div>
+</div>
+
+<script>
+(() => {
+  const root = document.getElementById('hissy-night-game');
+  const canvas = document.getElementById('hng-canvas');
+  const ctx = canvas.getContext('2d');
+  const scoreEl = document.getElementById('hng-score');
+  const timeEl = document.getElementById('hng-time');
+  const bestEl = document.getElementById('hng-best');
+  const statusEl = document.getElementById('hng-status');
+  const startBtn = document.getElementById('hng-start');
+  const pauseBtn = document.getElementById('hng-pause');
+  const restartBtn = document.getElementById('hng-restart');
+  const dirBtns = [...root.querySelectorAll('[data-dir]')];
+
+  const W = canvas.width, H = canvas.height;
+  const keys = new Set();
+  let bugs = [], particles = [], score = 0, best = 0, timeLeft = 60;
+  let running = false, paused = false, last = 0, elapsedTimer = 0, spawnTimer = 0, raf = 0;
+  let lizard = null, lizardCountdown = 0, lizardNotice = 0;
+  let ufo = null, ufoCountdown = 0;
+
+  const cat = {x:W/2,y:H/2+90,r:29,speed:235,facing:1,bob:0,moving:false};
+  const rand = (a,b) => a + Math.random()*(b-a);
+  const scheduleLizard = () => lizardCountdown = rand(5,11);
+  const scheduleUFO = () => ufoCountdown = rand(8,16);
+
+
+  // Procedural sound effects: no downloads or external assets required.
+  const soundBtn=document.getElementById('hng-sound');
+  let audio=null, master=null, muted=false;
+  const voices=new Set();
+  try{muted=localStorage.getItem('hissy-muted')==='true'}catch(_){}
+  function soundLabel(){soundBtn.textContent=muted?'🔇 Sound off':'🔊 Sound on';soundBtn.setAttribute('aria-pressed',String(!muted))}
+  soundLabel();
+  function unlockAudio(){
+    try{
+      const AC=window.AudioContext||window.webkitAudioContext;
+      if(!AC){soundBtn.textContent='Sound unavailable';soundBtn.disabled=true;return}
+      if(!audio){audio=new AC();master=audio.createGain();master.gain.value=muted?0:.45;master.connect(audio.destination)}
+      if(audio.state==='suspended')audio.resume().catch(()=>{});
+    }catch(_){}
+  }
+  function hush(){for(const v of voices){try{v.stop()}catch(_){}}voices.clear()}
+  function tone(f,end,d=.15,delay=0,type='sine',volume=.16){
+    if(!audio||audio.state!=='running'||muted||document.hidden||voices.size>24)return;
+    const t=audio.currentTime+delay, o=audio.createOscillator(),g=audio.createGain();
+    o.type=type;o.frequency.setValueAtTime(f,t);o.frequency.exponentialRampToValueAtTime(end,t+d);
+    g.gain.setValueAtTime(0,t);g.gain.linearRampToValueAtTime(volume,t+.008);g.gain.exponentialRampToValueAtTime(.0001,t+d);
+    o.connect(g);g.connect(master);voices.add(o);o.onended=()=>{voices.delete(o);o.disconnect();g.disconnect()};o.start(t);o.stop(t+d+.02);
+  }
+  function sfx(kind,value=1){
+    if(kind==='eat'){tone(180,65,.08,0,'triangle',.3);tone(480+value*90,700+value*100,.12,.055,'sine',.16)}
+    if(kind==='start'){tone(460,690,.18,0,'triangle');tone(690,920,.2,.16,'triangle')}
+    if(kind==='lizard'){tone(700,1100,.12);tone(700,1100,.12,.18)}
+    if(kind==='catch'){[523,659,784,1047].forEach((f,i)=>tone(f,f,.22,i*.09,'triangle',.2))}
+    if(kind==='ufo'){for(let i=0;i<6;i++)tone(i%2?650:300,i%2?300:650,.3,i*.27,'sine',.1)}
+    if(kind==='end'){[784,659,523,392,523].forEach((f,i)=>tone(f,f,.35,i*.18,'triangle',.2))}
+    if(kind==='tick')tone(900,600,.07,0,'sine',.12);
+  }
+  soundBtn.addEventListener('click',()=>{unlockAudio();muted=!muted;hush();if(master)master.gain.setValueAtTime(muted?0:.45,audio.currentTime);soundLabel();try{localStorage.setItem('hissy-muted',String(muted))}catch(_){};if(!muted)sfx('tick')});
+  document.addEventListener('visibilitychange',()=>{if(document.hidden){hush();if(running&&!paused)togglePause()}});
+
+  function resetGame(){
+    hush();
+    score=0; timeLeft=60; bugs=[]; particles=[]; lizard=null; lizardNotice=0; ufo=null;
+    cat.x=W/2; cat.y=H/2+90; cat.facing=1; cat.bob=0; cat.moving=false;
+    elapsedTimer=0; spawnTimer=0;
+    scoreEl.textContent='0'; timeEl.textContent='60';
+    statusEl.textContent='Press Start Game and help Hissy hunt under the moonlight!';
+    for(let i=0;i<10;i++) spawnBug(true);
+    scheduleLizard();
+    scheduleUFO();
+    draw();
+  }
+
+  function startGame(){
+    if(running && !paused) return;
+    if(timeLeft<=0) resetGame();
+    unlockAudio();
+    if(audio && audio.state!=="running")audio.resume().then(()=>sfx("start")).catch(()=>{});else sfx("start");
+    running=true; paused=false;
+    startBtn.disabled=true; pauseBtn.disabled=false; pauseBtn.textContent='Pause';
+    statusEl.textContent='Go Hissy! The night hunt begins!';
+    last=performance.now();
+    cancelAnimationFrame(raf);
+    raf=requestAnimationFrame(loop);
+    root.focus();
+  }
+
+  function togglePause(){
+    if(!running) return;
+    paused=!paused;
+    hush();unlockAudio();
+    cancelAnimationFrame(raf);
+    draw();
+    pauseBtn.textContent=paused?'Resume':'Pause';
+    statusEl.textContent=paused?'Hissy is taking a break.':'Hissy is hunting again!';
+    if(!paused){
+      last=performance.now();
+      raf=requestAnimationFrame(loop);
+    }
+  }
+
+  function endGame(){
+    hush();sfx("end");
+    running=false; paused=false;
+    startBtn.disabled=false; pauseBtn.disabled=true; pauseBtn.textContent='Pause';
+    if(score>best){ best=score; bestEl.textContent=best; }
+    statusEl.textContent=`Time! Hissy scored ${score} points.`;
+    draw(true);
+  }
+
+  function spawnBug(initial=false){
+    const types=[
+      {name:'beetle',value:1,speed:[45,85],size:10},
+      {name:'moth',value:2,speed:[70,110],size:11},
+      {name:'cricket',value:3,speed:[90,130],size:10},
+      {name:'grasshopper',value:4,speed:[55,85],size:12},
+      {name:'firefly',value:5,speed:[55,90],size:9}
+    ];
+    let t=types[Math.floor(Math.random()*types.length)];
+    if(Math.random()<.16) t=types[4];
+    let x=rand(28,W-28), y=rand(110,H-28);
+    if(!initial){
+      const s=Math.floor(Math.random()*4);
+      if(s===0)y=108;
+      if(s===1)x=W-24;
+      if(s===2)y=H-24;
+      if(s===3)x=24;
+    }
+    const a=rand(0,Math.PI*2), sp=rand(t.speed[0],t.speed[1]);
+    bugs.push({...t,x,y,vx:Math.cos(a)*sp,vy:Math.sin(a)*sp,wiggle:rand(0,6.28),jumpTimer:rand(.2,1.4),jumpPhase:0,jumping:false});
+    if(bugs.length>26) bugs.shift();
+  }
+
+  function spawnLizard(){
+    if(lizard) return;
+    const ltr=Math.random()<.5, speed=rand(285,360);
+    lizard={x:ltr?-55:W+55,y:rand(145,H-55),vx:ltr?speed:-speed,facing:ltr?1:-1,r:20,wiggle:0};
+    lizardNotice=1.8;
+    sfx("lizard");
+    statusEl.textContent='🦎 Lizard! Hissy can get 10 points!';
+  }
+
+  function spawnUFO(){
+    if(ufo) return;
+    sfx("ufo");
+    const ltr=Math.random()<.5, speed=rand(42,70);
+    ufo={
+      x:ltr?-70:W+70,
+      y:rand(12,36),
+      vx:ltr?speed:-speed,
+      facing:ltr?1:-1,
+      bob:rand(0,Math.PI*2)
+    };
+  }
+
+  function burst(x,y,n=10){
+    for(let i=0;i<n;i++){
+      particles.push({x,y,vx:rand(-90,90),vy:rand(-100,25),life:rand(.35,.7)});
+    }
+  }
+
+  function update(dt){
+    let dx=0,dy=0;
+    if(keys.has('arrowleft')||keys.has('a')) dx--;
+    if(keys.has('arrowright')||keys.has('d')) dx++;
+    if(keys.has('arrowup')||keys.has('w')) dy--;
+    if(keys.has('arrowdown')||keys.has('s')) dy++;
+
+    cat.moving=!!(dx||dy);
+    if(dx||dy){
+      const l=Math.hypot(dx,dy);
+      dx/=l; dy/=l;
+      cat.x+=dx*cat.speed*dt;
+      cat.y+=dy*cat.speed*dt;
+      if(dx!==0) cat.facing=dx>0?1:-1;
+      cat.bob+=dt*12;
+    }
+    cat.x=Math.max(37,Math.min(W-37,cat.x));
+    cat.y=Math.max(157,Math.min(H-51,cat.y));
+
+    for(const b of bugs){
+      b.wiggle+=dt*5;
+      if(b.name==='grasshopper'){
+        b.jumpTimer-=dt;
+        if(!b.jumping && b.jumpTimer<=0){
+          b.jumping=true; b.jumpPhase=0; b.jumpTimer=rand(.8,1.8);
+          const a=rand(0,Math.PI*2), sp=rand(170,240);
+          b.vx=Math.cos(a)*sp; b.vy=Math.sin(a)*sp;
+        }
+        if(b.jumping){
+          b.jumpPhase+=dt*4.8;
+          b.x+=b.vx*dt; b.y+=b.vy*dt;
+          b.vx*=.985; b.vy*=.985;
+          if(b.jumpPhase>=Math.PI){
+            b.jumping=false; b.vx*=.25; b.vy*=.25;
+          }
+        } else {
+          b.x+=b.vx*dt*.35; b.y+=b.vy*dt*.35;
+        }
+      } else {
+        b.x+=b.vx*dt+Math.sin(b.wiggle)*8*dt;
+        b.y+=b.vy*dt+Math.cos(b.wiggle*1.3)*8*dt;
+      }
+      if(b.x<18||b.x>W-18)b.vx*=-1;
+      if(b.y<104||b.y>H-18)b.vy*=-1;
+      b.x=Math.max(18,Math.min(W-18,b.x));
+      b.y=Math.max(104,Math.min(H-18,b.y));
+    }
+
+    for(let i=bugs.length-1;i>=0;i--){
+      const b=bugs[i];
+      if(Math.hypot(cat.x-b.x,cat.y-b.y)<cat.r+b.size+3){
+        score+=b.value;
+        sfx("eat",b.value);
+        scoreEl.textContent=score;
+        statusEl.textContent=`Hissy ate a ${b.name}! +${b.value}`;
+        burst(b.x,b.y,b.name==='grasshopper'?11:7);
+        bugs.splice(i,1);
+        spawnBug();
+      }
+    }
+
+    if(!lizard){
+      lizardCountdown-=dt;
+      if(lizardCountdown<=0) spawnLizard();
+    } else {
+      lizard.wiggle+=dt*18;
+      lizard.x+=lizard.vx*dt;
+      lizard.y+=Math.sin(lizard.wiggle)*22*dt;
+      if(Math.hypot(cat.x-lizard.x,cat.y-lizard.y)<cat.r+lizard.r+4){
+        score+=10;
+        sfx("catch");
+        scoreEl.textContent=score;
+        statusEl.textContent='🦎 Hissy caught the lizard! +10!';
+        burst(lizard.x,lizard.y,18);
+        lizard=null;
+        scheduleLizard();
+      } else if(lizard.x<-85||lizard.x>W+85){
+        lizard=null;
+        scheduleLizard();
+        statusEl.textContent='The lizard escaped into the dark bushes!';
+      }
+    }
+
+    if(!ufo){
+      ufoCountdown-=dt;
+      if(ufoCountdown<=0) spawnUFO();
+    } else {
+      ufo.bob+=dt*2.4;
+      ufo.x+=ufo.vx*dt;
+      if(ufo.x<-95||ufo.x>W+95){
+        ufo=null;
+        scheduleUFO();
+      }
+    }
+
+    if(lizardNotice>0) lizardNotice-=dt;
+
+    for(let i=particles.length-1;i>=0;i--){
+      const p=particles[i];
+      p.life-=dt;
+      p.x+=p.vx*dt;
+      p.y+=p.vy*dt;
+      p.vy+=130*dt;
+      if(p.life<=0) particles.splice(i,1);
+    }
+
+    spawnTimer+=dt;
+    if(spawnTimer>1.25){
+      spawnTimer=0;
+      if(bugs.length<19) spawnBug();
+    }
+
+    elapsedTimer+=dt;
+    if(elapsedTimer>=1){
+      const n=Math.floor(elapsedTimer);
+      elapsedTimer-=n;
+      timeLeft=Math.max(0,timeLeft-n);
+      timeEl.textContent=timeLeft;
+      if(timeLeft>0&&timeLeft<=5)sfx("tick");
+      if(timeLeft<=0) endGame();
+    }
+  }
+
+  function drawBackyard(){
+    const sky=ctx.createLinearGradient(0,0,0,115);
+    sky.addColorStop(0,'#081329');
+    sky.addColorStop(1,'#26385a');
+    ctx.fillStyle=sky;
+    ctx.fillRect(0,0,W,115);
+
+    const grass=ctx.createLinearGradient(0,100,0,H);
+    grass.addColorStop(0,'#31543b');
+    grass.addColorStop(1,'#1f392a');
+    ctx.fillStyle=grass;
+    ctx.fillRect(0,100,W,H-100);
+
+    ctx.fillStyle='rgba(255,255,225,.92)';
+    for(let i=0;i<34;i++){
+      const x=(i*91+17)%W,y=8+((i*37)%74);
+      ctx.beginPath();
+      ctx.arc(x,y,1+(i%3)*.45,0,Math.PI*2);
+      ctx.fill();
+    }
+
+    ctx.fillStyle='#f4efc6';
+    ctx.beginPath();
+    ctx.arc(628,40,24,0,Math.PI*2);
+    ctx.fill();
+    ctx.fillStyle='#101c38';
+    ctx.beginPath();
+    ctx.arc(638,32,22,0,Math.PI*2);
+    ctx.fill();
+
+    const glow=ctx.createRadialGradient(610,55,10,610,55,150);
+    glow.addColorStop(0,'rgba(214,225,255,.13)');
+    glow.addColorStop(1,'rgba(214,225,255,0)');
+    ctx.fillStyle=glow;
+    ctx.fillRect(450,0,270,250);
+
+    // UFO in the distant sky, on the far side of the fence
+    drawUFO();
+
+    ctx.fillStyle='#453027';
+    ctx.fillRect(0,82,W,14);
+    for(let x=0;x<W;x+=48){
+      ctx.fillStyle='#5a4437';
+      ctx.fillRect(x+6,42,32,48);
+      ctx.fillStyle='#3d3028';
+      ctx.fillRect(x+22,42,4,48);
+    }
+
+    // Backyard picnic table
+    ctx.fillStyle='#5b4433';
+    ctx.fillRect(55,145,160,18);
+    ctx.fillRect(70,181,130,14);
+    ctx.fillStyle='#402f23';
+    ctx.fillRect(82,160,14,72);
+    ctx.fillRect(173,160,14,72);
+    ctx.fillStyle='#684d38';
+    ctx.fillRect(48,138,174,10);
+    ctx.fillStyle='#34261c';
+    ctx.fillRect(64,195,12,36);
+    ctx.fillRect(194,195,12,36);
+
+    ctx.fillStyle='#63705e';
+    ctx.fillRect(W-160,145,115,70);
+    ctx.fillStyle='#74816f';
+    ctx.fillRect(W-153,152,101,56);
+
+    ctx.fillStyle='#294a31';
+    ctx.beginPath();
+    ctx.arc(70,350,50,0,Math.PI*2);
+    ctx.arc(112,355,45,0,Math.PI*2);
+    ctx.fill();
+
+    ctx.fillStyle='#2d5135';
+    ctx.beginPath();
+    ctx.arc(650,365,62,0,Math.PI*2);
+    ctx.fill();
+  }
+
+  function drawUFO(){
+    if(!ufo) return;
+    ctx.save();
+    ctx.translate(ufo.x, ufo.y + Math.sin(ufo.bob)*2.5);
+
+    ctx.fillStyle='rgba(130,255,210,.06)';
+    ctx.beginPath();
+    ctx.ellipse(0,8,22,18,0,0,Math.PI*2);
+    ctx.fill();
+
+    ctx.fillStyle='rgba(170,230,255,.72)';
+    ctx.beginPath();
+    ctx.ellipse(0,-6,10,6,0,Math.PI,0,true);
+    ctx.closePath();
+    ctx.fill();
+
+    ctx.fillStyle='#8f98a8';
+    ctx.beginPath();
+    ctx.ellipse(0,0,20,6.5,0,0,Math.PI*2);
+    ctx.fill();
+
+    ctx.fillStyle='#6ce6a8';
+    for(let i=-10;i<=10;i+=5){
+      ctx.beginPath();
+      ctx.arc(i,1.5,1.3,0,Math.PI*2);
+      ctx.fill();
+    }
+
+    ctx.restore();
+  }
+
+  function drawBug(b){
+    ctx.save();
+    let jumpY=0;
+    if(b.name==='grasshopper'&&b.jumping){
+      jumpY=-Math.sin(Math.min(Math.PI,b.jumpPhase))*18;
+    }
+    ctx.translate(b.x,b.y+jumpY);
+
+    if(b.name==='firefly'){
+      ctx.globalAlpha=.6;
+      ctx.fillStyle='#fff4a3';
+      ctx.beginPath();
+      ctx.arc(0,0,25,0,Math.PI*2);
+      ctx.fill();
+      ctx.globalAlpha=1;
+      ctx.fillStyle='#40371f';
+      ctx.beginPath();
+      ctx.ellipse(0,0,6,10,0,0,Math.PI*2);
+      ctx.fill();
+      ctx.fillStyle='#ffe96e';
+      ctx.beginPath();
+      ctx.arc(0,5,5,0,Math.PI*2);
+      ctx.fill();
+    } else if(b.name==='moth'){
+      ctx.fillStyle='#d3c9bb';
+      ctx.beginPath();
+      ctx.ellipse(-7,0,8,5,-.4,0,Math.PI*2);
+      ctx.ellipse(7,0,8,5,.4,0,Math.PI*2);
+      ctx.fill();
+      ctx.fillStyle='#665d55';
+      ctx.fillRect(-2,-6,4,12);
+    } else if(b.name==='cricket'){
+      ctx.strokeStyle='#7ea168';
+      ctx.lineWidth=2;
+      ctx.beginPath();
+      ctx.moveTo(-3,4); ctx.lineTo(-10,11);
+      ctx.moveTo(3,4); ctx.lineTo(10,11);
+      ctx.stroke();
+      ctx.fillStyle='#557842';
+      ctx.beginPath();
+      ctx.ellipse(0,0,5,9,0,0,Math.PI*2);
+      ctx.fill();
+    } else if(b.name==='grasshopper'){
+      ctx.strokeStyle='#6fa451';
+      ctx.lineWidth=3;
+      ctx.lineCap='round';
+      ctx.beginPath();
+      ctx.moveTo(-6,3); ctx.lineTo(-15,12); ctx.lineTo(-22,8);
+      ctx.moveTo(5,4); ctx.lineTo(13,14); ctx.lineTo(20,9);
+      ctx.stroke();
+      ctx.fillStyle='#78b652';
+      ctx.beginPath();
+      ctx.ellipse(0,0,11,6,-.15,0,Math.PI*2);
+      ctx.fill();
+      ctx.beginPath();
+      ctx.arc(9,-2,5,0,Math.PI*2);
+      ctx.fill();
+      ctx.fillStyle='#182514';
+      ctx.beginPath();
+      ctx.arc(11,-4,1.4,0,Math.PI*2);
+      ctx.fill();
+    } else {
+      ctx.fillStyle='#7a5440';
+      ctx.beginPath();
+      ctx.ellipse(0,0,7,10,0,0,Math.PI*2);
+      ctx.fill();
+      ctx.strokeStyle='#3c291f';
+      ctx.lineWidth=2;
+      ctx.beginPath();
+      ctx.moveTo(0,-9); ctx.lineTo(0,9);
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  function drawLizard(){
+    if(!lizard) return;
+    ctx.save();
+    ctx.translate(lizard.x,lizard.y);
+    ctx.scale(lizard.facing,1);
+    const leg=Math.sin(lizard.wiggle)*5;
+
+    ctx.strokeStyle='#5b8e45';
+    ctx.lineWidth=4;
+    ctx.beginPath();
+    ctx.moveTo(-7,4); ctx.lineTo(-15,10+leg);
+    ctx.moveTo(3,4); ctx.lineTo(12,10-leg);
+    ctx.stroke();
+
+    ctx.fillStyle='#67a151';
+    ctx.beginPath();
+    ctx.ellipse(0,0,25,10,0,0,Math.PI*2);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.ellipse(23,-1,10,8,0,0,Math.PI*2);
+    ctx.fill();
+
+    ctx.strokeStyle='#67a151';
+    ctx.lineWidth=7;
+    ctx.beginPath();
+    ctx.moveTo(-23,0);
+    ctx.quadraticCurveTo(-43,2,-55,-8);
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  function drawCat(){
+    ctx.save();
+    const walk=cat.moving?Math.sin(cat.bob):0;
+    ctx.translate(cat.x,cat.y+(cat.moving?Math.sin(cat.bob*2)*1.4:0));
+    ctx.scale(cat.facing,1);
+
+    ctx.strokeStyle='#08090b';
+    ctx.lineWidth=9;
+    ctx.lineCap='round';
+    ctx.beginPath();
+    ctx.moveTo(-29,0);
+    ctx.quadraticCurveTo(-52,-14,-42,-32);
+    ctx.stroke();
+
+    const l1=walk*5,l2=-walk*5;
+    ctx.lineWidth=10;
+    ctx.beginPath();
+    ctx.moveTo(-18,15); ctx.lineTo(-20,33-l1);
+    ctx.moveTo(-5,18); ctx.lineTo(-2,36-l2);
+    ctx.moveTo(10,17); ctx.lineTo(12,37-l2);
+    ctx.moveTo(22,14); ctx.lineTo(23,34-l1);
+    ctx.stroke();
+
+    ctx.fillStyle='#08090b';
+    ctx.beginPath();
+    ctx.ellipse(-4,4,30,21,-.05,0,Math.PI*2);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.arc(20,-10,18,0,Math.PI*2);
+    ctx.fill();
+
+    ctx.beginPath();
+    ctx.moveTo(7,-20); ctx.lineTo(11,-38); ctx.lineTo(21,-23);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.moveTo(22,-24); ctx.lineTo(33,-38); ctx.lineTo(34,-18);
+    ctx.fill();
+
+    for(const ex of [17,27]){
+      ctx.fillStyle='#dfff6b';ctx.beginPath();ctx.moveTo(ex-4.3,-11);
+      ctx.quadraticCurveTo(ex,-16.2,ex+4.3,-11);ctx.quadraticCurveTo(ex,-6.7,ex-4.3,-11);ctx.fill();
+      ctx.fillStyle='#08090b';ctx.beginPath();ctx.ellipse(ex,-11,.85,3.3,0,0,Math.PI*2);ctx.fill();
+    }
+
+    ctx.fillStyle='#d58b94';
+    ctx.beginPath();
+    ctx.moveTo(33,-4); ctx.lineTo(38,-4); ctx.lineTo(35.5,-1);
+    ctx.fill();
+
+    ctx.restore();
+
+    ctx.save();
+    ctx.textAlign='center';
+    ctx.font='bold 15px system-ui';
+    ctx.fillStyle='white';
+    ctx.strokeStyle='rgba(0,0,0,.75)';
+    ctx.lineWidth=4;
+    ctx.strokeText('Hissy',cat.x,cat.y-50);
+    ctx.fillText('Hissy',cat.x,cat.y-50);
+    ctx.restore();
+  }
+
+  function draw(gameOver=false){
+    drawBackyard();
+    bugs.forEach(drawBug);
+    drawLizard();
+
+    for(const p of particles){
+      ctx.globalAlpha=Math.max(0,p.life/.7);
+      ctx.fillStyle='#ffe68b';
+      ctx.fillRect(p.x,p.y,4,4);
+    }
+    ctx.globalAlpha=1;
+
+    drawCat();
+
+    if(lizardNotice>0&&running){
+      ctx.fillStyle='rgba(0,0,0,.7)';
+      ctx.fillRect(W/2-145,108,290,38);
+      ctx.fillStyle='white';
+      ctx.textAlign='center';
+      ctx.font='bold 20px system-ui';
+      ctx.fillText('🦎 LIZARD! +10 POINTS',W/2,134);
+    }
+
+    if(!running&&timeLeft===60){
+      ctx.fillStyle='rgba(0,0,0,.42)';
+      ctx.fillRect(0,0,W,H);
+      ctx.fillStyle='white';
+      ctx.textAlign='center';
+      ctx.font='bold 36px system-ui';
+      ctx.fillText("Hissy's Backyard Hunt",W/2,H/2-28);
+      ctx.font='20px system-ui';
+      ctx.fillText('Catch bugs under the moonlight!',W/2,H/2+10);
+      ctx.font='17px system-ui';
+      ctx.fillText('Press Start Game',W/2,H/2+48);
+    }
+
+    if(paused){
+      ctx.fillStyle='rgba(0,0,0,.48)';
+      ctx.fillRect(0,0,W,H);
+      ctx.fillStyle='white';
+      ctx.textAlign='center';
+      ctx.font='bold 36px system-ui';
+      ctx.fillText('PAUSED',W/2,H/2);
+    }
+
+    if(gameOver){
+      ctx.fillStyle='rgba(0,0,0,.52)';
+      ctx.fillRect(0,0,W,H);
+      ctx.fillStyle='white';
+      ctx.textAlign='center';
+      ctx.font='bold 36px system-ui';
+      ctx.fillText('Night Hunt Over!',W/2,H/2-25);
+      ctx.font='bold 27px system-ui';
+      ctx.fillText(`Hissy scored ${score} points`,W/2,H/2+18);
+    }
+  }
+
+  function loop(now){
+    if(!running||paused) return;
+    const dt=Math.min(.033,(now-last)/1000||0);
+    last=now;
+    update(dt);
+    draw(timeLeft<=0);
+    if(running&&!paused) raf=requestAnimationFrame(loop);
+  }
+
+  root.addEventListener('keydown',e=>{
+    const k=e.key.toLowerCase();
+    if(['arrowleft','arrowright','arrowup','arrowdown','w','a','s','d'].includes(k)){
+      e.preventDefault();
+      keys.add(k);
+    }
+    if(k===' ' && !e.repeat && e.target.tagName!=='BUTTON'){
+      e.preventDefault();
+      togglePause();
+    }
+  });
+
+  root.addEventListener('keyup',e=>keys.delete(e.key.toLowerCase()));
+  root.addEventListener('blur',()=>keys.clear(),true);
+
+  const dirMap={up:'arrowup',down:'arrowdown',left:'arrowleft',right:'arrowright'};
+  dirBtns.forEach(btn=>{
+    const key=dirMap[btn.dataset.dir];
+    const on=()=>{keys.add(key);root.focus()};
+    const off=()=>keys.delete(key);
+    btn.addEventListener('pointerdown',on);
+    btn.addEventListener('pointerup',off);
+    btn.addEventListener('pointercancel',off);
+    btn.addEventListener('pointerleave',off);
+  });
+
+  startBtn.addEventListener('click',startGame);
+  pauseBtn.addEventListener('click',togglePause);
+  restartBtn.addEventListener('click',()=>{
+    cancelAnimationFrame(raf);
+    running=false; paused=false;
+    keys.clear();
+    startBtn.disabled=false;
+    pauseBtn.disabled=true;
+    pauseBtn.textContent='Pause';
+    resetGame();
+    startGame();
+  });
+
+  resetGame();
+})();
+</script>
+</body>
+</html>
